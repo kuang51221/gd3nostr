@@ -125,7 +125,9 @@
                 <button id="subscribe">開始</button>
             </div>
             <button id="broadcast">廣播</button>
-            <button id="toggleMedia">暫停/恢復視訊/音訊</button>
+            <!-- <button id="toggleMedia">暫停/恢復視訊/音訊</button> -->
+            <button id="toggleVideo">暫停/恢復視訊</button>
+            <button id="toggleAudio">暫停/恢復音訊</button>
             <button id="unsubscribe" >退出</button>
             <div id="My_Id"></div>
             <h4>收到的消息:</h4>
@@ -166,7 +168,9 @@
         const broadcastBtn = document.getElementById('broadcast');
         const localVideo = document.getElementById('localVideo');
         const remoteVideos = document.getElementById('remoteVideos');
-        const toggleMediaBtn = document.getElementById('toggleMedia');
+        //const toggleMediaBtn = document.getElementById('toggleMedia');
+        const toggleVideoBtn = document.getElementById('toggleVideo');
+        const toggleAudioBtn = document.getElementById('toggleAudio');
 
         subscribeTopicInput.value = 'lucky_'; // 預設房間名稱
         let room = `join`; // 預設房間名稱
@@ -179,7 +183,9 @@
             my_id.textContent = `Room:${room} | ID:${selfId} `;
             subscribeBtn.addEventListener('click', startSubscription);
             unsubscribeBtn.addEventListener('click', stopSubscription);
-            toggleMediaBtn.addEventListener('click', toggleMedia);
+            //toggleMediaBtn.addEventListener('click', toggleMedia);
+            toggleVideoBtn.addEventListener('click', toggleVideo);
+            toggleAudioBtn.addEventListener('click', toggleAudio);
         }
 
         // 生成密鑰對
@@ -337,6 +343,7 @@
 
                 dataChannel.onclose = () => {
                     console.log(remoteId, `通道已關閉`);
+                    toGodot(`通道已關閉: ${remoteId}`);
                 };
 
                 peerConnection.onicecandidate = event => {
@@ -367,6 +374,11 @@
                     if (peerConnection.connectionState === 'connected') {
                         console.log('🎉 通話已連線！');
                         broadcast(JSON.stringify({ 'message': '已連線' }));
+                    }
+                    else if (peerConnection.connectionState === 'disconnected' ||
+                        peerConnection.connectionState === 'failed') {
+                        console.log('❌ 通話已斷開或失敗');
+                        _cleanupConnection(remoteId);
                     }
                 };
             } catch (error) {
@@ -528,14 +540,14 @@
             pc.close();
 
             // 清理资源
-            connections.delete(remotePk);
-            iceCandidateBuffers.delete(remotePk);
+            connections.delete(peerid);
+            iceCandidateBuffers.delete(peerid);
 
             // 移除视频元素
-            const video = peerVideos[remotePk];
+            const video = peerVideos[peerid];
             if (video && video.parentNode) {
                 video.parentNode.removeChild(video);
-                delete peerVideos[remotePk];
+                delete peerVideos[peerid];
             }
         }
 
@@ -574,65 +586,57 @@
         }
 
 
-        // 全局變量記錄狀態
-        let isLocalMediaPaused = false;
-        let pausedTracks = [];
-
-        function toggleMedia() {
-            if (isLocalMediaPaused) {
-                resumeMedia();
-            } else {
-                pauseMedia();
-            }
-        }
-        // 暫停本地流
-        function pauseMedia() {
-            if (!localStream) return;
-
-            pausedTracks = localStream.getTracks().map(track => {
-                if (track.kind === 'video' || track.kind === 'audio') {
-                    track.enabled = false;  // 保持連接但禁用軌道
+        
+            
+            function toggleVideo() {
+                if (localStream) {
+                    const videoTrack = localStream.getVideoTracks()[0];
+                    if (videoTrack) {
+                        videoTrack.enabled = !videoTrack.enabled;
+                        toggleVideoBtn.textContent = videoTrack.enabled ? '暫停視訊' : '恢復視訊';
+                        console.log(`視訊已 ${videoTrack.enabled ? '恢復' : '暫停'}`);
+                    } else {
+                        console.warn('本地流中沒有視訊軌道');
+                    }
+                } else {
+                    console.warn('本地流尚未初始化');
                 }
-                return track;
-            });
-            isLocalMediaPaused = true;
-            localVideo.srcObject = null; // 可選：隱藏本地預覽
-            console.log('已暫停本地視訊/音訊');
-        }
-
-        // 恢復本地流
-        function resumeMedia() {
-            if (!localStream || !isLocalMediaPaused) return;
-
-            pausedTracks.forEach(track => {
-                track.enabled = true;
-            });
-
-            isLocalMediaPaused = false;
-            localVideo.srcObject = localStream; // 恢復本地預覽
-            console.log('已恢復本地視訊/音訊');
-        }
-
+            }
+            function toggleAudio() {
+                if (localStream) {
+                    const audioTrack = localStream.getAudioTracks()[0];
+                    if (audioTrack) {
+                        audioTrack.enabled = !audioTrack.enabled;
+                        toggleAudioBtn.textContent = audioTrack.enabled ? '暫停音訊' : '恢復音訊';
+                        console.log(`音訊已 ${audioTrack.enabled ? '恢復' : '暫停'}`);
+                    } else {
+                        console.warn('本地流中沒有音訊軌道');
+                    }
+                } else {
+                    console.warn('本地流尚未初始化');
+                }
+            }
+            
         // 停止
         function stopSubscription() {
             try {
                 // 1. 關閉所有與其他節點的連接
-                connections.forEach((pc, remotePk) => {
+                connections.forEach((pc, peerid) => {
                     // 關閉數據通道
                     if (pc.datachannel) {
                         pc.datachannel.close();
-                        console.log(`關閉與 ${nip19.npubEncode(remotePk)} 的數據通道`);
+                        console.log(`關閉與 ${peerid} 的數據通道`);
                     }
 
                     // 關閉 PeerConnection
                     pc.close();
-                    console.log(`關閉與 ${nip19.npubEncode(remotePk)} 的 WebRTC 連接`);
+                    console.log(`關閉與 ${peerid} 的 WebRTC 連接`);
 
                     // 移除遠端視頻元素
-                    const videoElement = document.getElementById(remotePk);
+                    const videoElement = document.getElementById(peerid);
                     if (videoElement) {
                         videoElement.remove();
-                        delete peerVideos[remotePk];
+                        delete peerVideos[peerid];
                     }
                 });
 
@@ -708,7 +712,9 @@
 
         // 啟動APP
         init();
+        
 
+    //Godot Bridge
     var toGodot = null;
 
     window.JSGD = {
@@ -725,13 +731,14 @@
             }
         }
     };
+   
 
     </script>
 <!--  Godot Godot Bridge -->
 <script src="index.js"></script>
 <script>
 	const GODOT_THREADS_ENABLED = false;
-    var engine = new Engine({"args":[],"canvasResizePolicy":2,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":12243440,"index.wasm":25590391},"focusCanvas":true,"gdnativeLibs":[]});
+    var engine = new Engine({"args":[],"canvasResizePolicy":2,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":12243520,"index.wasm":25590391},"focusCanvas":true,"gdnativeLibs":[]});
 	engine.startGame({
     /* optional override configuration, eg. */
 	 //args:[],
