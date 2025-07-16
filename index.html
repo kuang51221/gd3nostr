@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
+    <title>Nostr</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        #canvas {
+            /* The Godot canvas itself */
+            width: 100%;
+            height: 100%;
+            display: block;
+            /* Remove extra space below canvas */
+        }
+
+        /* Style the header */
+
+        header {
+            background-color: #666;
+            padding: 1px;
+            text-align: center;
+            font-size: 10px;
+            color: white;
+        }
+
+        /* Create two columns/boxes that floats next to each other */
+        nav {
+            float: left;
+            width: 80%;
+            /* height: 300px;  only for demonstration, should be removed */
+            background: #ccc;
+            padding: 5px;
+            overflow-y: auto;
+        }
+
+        /* Style the list inside the menu */
+        nav ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        article {
+            float: left;
+            padding: 5px;
+            width: 20%;
+            background-color: #f1f1f1;
+            /*height: 300px;  only for demonstration, should be removed */
+            overflow-y: scroll;
+        }
+
+        /* Clear floats after the columns */
+        section::after {
+            content: "";
+            display: table;
+            clear: both;
+        }
+
+        /* Style the footer */
+        footer {
+            background-color: #777;
+            padding: 10px;
+            text-align: center;
+            color: white;
+        }
+
+        /* Responsive layout - makes the two columns/boxes stack on top of each other instead of next to each other, on small screens */
+        @media (max-width: 600px) {
+
+            nav,
+            article {
+                width: 100%;
+                height: auto;
+            }
+        }
+
+        #video-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 3px;
+        }
+
+        video {
+            width: 95%;
+            border-radius: 1px;
+            padding: 3px;
+            background: rgba(255, 255, 255, 0);
+        }
+    </style>
+</head>
+
+
+<body>
+    <section>
+        <nav>
+            <canvas id="canvas" width="500" height="320" style="border:1px solid #000000;">
+            </canvas>
+        </nav>
+        <article style="overflow-y: scroll;">
+            <div id="remoteVideos" class="video" style="border-radius: 5px;"></div>
+            <div class="video" style="border-radius: 5px;">
+                <video id="localVideo" autoplay muted playsinline
+                    style="width: 100%;  background-color: rgb(130, 155, 119); margin-top: 1px;"></video>
+            </div>
+
+        </article>
+    </section>
+    <footer>
+        <div class="section">
+            <h3>Join Room</h3>
+            <div>
+                <label for="subscribeTopic">Room:</label>
+                <input type="text" id="subscribeTopic" placeholder="輸入Room">
+                <button id="subscribe">開始</button>
+            </div>
+            <button id="broadcast">廣播</button>
+            <button id="toggleMedia">暫停/恢復視訊/音訊</button>
+            <button id="unsubscribe" >退出</button>
+            <div id="My_Id"></div>
+            <h4>收到的消息:</h4>
+            <div id="receivedMessages"></div>
+        </div>
+    </footer>
+
+
+    <script type="module">
+        import * as nostrTools from "https://esm.sh/nostr-tools@2.15.0";
+        import {selfId} from "./utils.js"
+        const {
+            generateSecretKey, getPublicKey, finalizeEvent, nip19, SimplePool, nip04
+        } = nostrTools;
+        // 全局變量
+
+        let privateKey = '';
+        let nsec = '';
+        let publicKey = '';
+        let remotePk = '';
+        let subscription = null;
+        let pool = new SimplePool();
+        let connections = new Map()
+        const iceCandidateBuffers = new Map();
+        let relayConnections = []
+        //const relays = ["wss://relay.damus.io", "wss://relay.snort.social", "wss://nos.lol"];
+        const relays = [`wss://black.nostrcity.club`, `wss://eu.purplerelay.com`];
+        let localStream;
+        const peerAudios = {};
+        const peerVideos = {};
+
+        // DOM元素
+        const my_id = document.getElementById('My_Id');
+        const subscribeTopicInput = document.getElementById('subscribeTopic');
+        const subscribeBtn = document.getElementById('subscribe');
+        const unsubscribeBtn = document.getElementById('unsubscribe');
+        const receivedMessages = document.getElementById('receivedMessages');
+        const broadcastBtn = document.getElementById('broadcast');
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideos = document.getElementById('remoteVideos');
+        const toggleMediaBtn = document.getElementById('toggleMedia');
+
+        subscribeTopicInput.value = 'lucky_'; // 預設房間名稱
+        let room = `join`; // 預設房間名稱
+        let present_time = 0;
+        let peerConnection = null;
+        
+
+        // 初始化
+        function init() {
+            my_id.textContent = `Room:${room} | ID:${selfId} `;
+            subscribeBtn.addEventListener('click', startSubscription);
+            unsubscribeBtn.addEventListener('click', stopSubscription);
+            toggleMediaBtn.addEventListener('click', toggleMedia);
+        }
+
+        // 生成密鑰對
+        function generateKeys() {
+            try {
+                const sk = generateSecretKey();
+                nsec = nip19.nsecEncode(sk);
+                //privateKeyInput.value = nsec;
+                localStorage.setItem('nostrPrivateKey', nsec);
+                my_id.textContent = `Room:${room} | ID:${selfId} `;
+                updatePublicKey();
+            } catch (error) {
+                console.error('生成密鑰錯誤:', error);
+                alert('生成密鑰失敗: ' + error.message);
+            }
+        }
+
+        // 更新公鑰顯示,房間名稱
+        function updatePublicKey() {
+            //nsec = privateKeyInput.value;
+            if (!nsec.startsWith('nsec1')) return;
+
+            try {
+                privateKey = nip19.decode(nsec).data;
+                publicKey = getPublicKey(privateKey);
+                const npub = nip19.npubEncode(publicKey);
+                //publicKeyInput.value = npub;
+                // 更新房間名稱
+                room += subscribeTopicInput.value.trim();
+                my_id.textContent = `Room:${room} | ID:${selfId} `;
+            } catch (error) {
+                console.error('解析密鑰錯誤:', error);
+            }
+        }
+
+
+        // 發送presence在線消息
+        async function _sendPresence() {
+            if (!privateKey) {
+                alert('請先生成或輸入私鑰');
+                return;
+            }
+            try {
+                const msg = JSON.stringify({ 
+                    type: `presence`, 
+                    pubkey: publicKey, 
+                    content: `Join: ${room}` ,
+                    peerid: selfId,
+                });
+                // 創建事件
+                const event = {
+                    kind: 25121,
+                    created_at: present_time,
+                    tags: [['t', room]], // 主題標籤
+                    content: msg,
+                    pubkey: publicKey
+                };
+
+                // 簽名事件
+                const signedEvent = finalizeEvent(event, privateKey);
+                await Promise.any(pool.publish(relays, signedEvent));
+
+            } catch (e) {
+                console.error(`❌ 發送信令失敗: ${e}`)
+            }
+        }
+
+        // 開始訂閱
+        async function startSubscription() {
+            // 設定加入時間
+            present_time = Math.floor(Date.now() / 1000);
+            if (!room) {
+                alert('請輸入Room');
+                return;
+            }
+            //Creates Key Pairs
+            generateKeys();
+
+            subscription = pool.subscribe(relays,
+                {
+                    kinds: [25121],
+                    '#t': [room], // 過濾特定主題
+                    since: Math.floor(Date.now() / 1000) - 10000,//
+                },
+                {
+                    async onevent(event) {
+                        try {
+                            if (event.kind !== 25121) return; // 確保是主題
+                            displayMessage(event);
+                            _handleEvent(event);
+                        } catch (error) {
+                            console.error('解密消息錯誤:', error);
+                            return;
+                        }
+
+                    }
+                }
+            );
+
+            subscribeBtn.disabled = true;
+            unsubscribeBtn.disabled = false;
+            _sendPresence()
+            //const presenceInterval = setInterval(() => _sendPresence(), 20000)// 每20秒發送一次在線消息
+        }
+
+        function _handlePeerPresence(event) {
+            //const remotePk = event.pubkey;
+            const content = JSON.parse(event.content);
+            const remoteId = content.peerid;
+            //console.log(`收到${remoteId}的在線消息:`);
+            if (!connections.has(remoteId)) {
+                // 初始化新的 WebRTC 連接
+                _initConnection(event, remoteId)
+            }
+        }
+
+        async function _initConnection(event, remoteId) {
+            //console.log(`_initConnection收到${remoteId}:`);
+            if (connections.has(remoteId)) {
+                console.warn(`已存在與 ${remoteId} 的連接`);
+                return;
+            }
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                localVideo.srcObject = localStream;
+                peerConnection = new RTCPeerConnection({
+                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                });
+                connections.set(remoteId, peerConnection);
+                //console.log(`connections set:`, connections);
+                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+                // 設置通道
+                const dataChannel = peerConnection.createDataChannel('nostr-godot',
+                    {
+                        ordered: true, // 確保消息按順序到達
+                        maxRetransmits: 2, // 設置最大重傳次數
+                    }
+                );
+                // 將 dataChannel 添加到 peerConnection
+                peerConnection.datachannel = dataChannel;
+
+                dataChannel.onopen = () => {
+                    ;//console.log(nip19.npubEncode(remotePk), `通道已連接`);
+                };
+
+                // 在 _initConnection 中添加對方通道監聽
+                peerConnection.ondatachannel = (event) => {
+                    const remoteDataChannel = event.channel;
+                    remoteDataChannel.onmessage = (event) => {
+                        //console.log(`收到來自 ${nip19.npubEncode(remotePk)} 的消息:`, event.data);
+                        _handleMessage(event.data); //
+                    };
+                };
+
+                dataChannel.onclose = () => {
+                    console.log(remoteId, `通道已關閉`);
+                };
+
+                peerConnection.onicecandidate = event => {
+                    if (event.candidate) {
+                        _sendSignal(remoteId, { type: 'ice', candidate: event.candidate });
+                    }
+                };
+
+                peerConnection.ontrack = event => {
+                    //remoteVideo.srcObject = event.streams[0];
+                    let video = peerVideos[remoteId];
+                    if (!video) {
+                        video = document.createElement("video");
+                        video.setAttribute("id", remoteId);
+                        // iOS 手機使用時，必須增加的屬性
+                        video.setAttribute("autoplay", "");
+                        video.setAttribute("muted", "");
+                        video.setAttribute("playsinline", "");
+                        video.srcObject = event.streams[0];
+                        peerVideos[remoteId] = video;
+                        remoteVideos.appendChild(video);
+                    }
+                    //console.log('✅ 遠端視訊流已接收');
+                };
+
+                peerConnection.onconnectionstatechange = () => {
+                    console.log(`🌐 連線狀態: ${peerConnection.connectionState}`);
+                    if (peerConnection.connectionState === 'connected') {
+                        console.log('🎉 通話已連線！');
+                        broadcast(JSON.stringify({ 'message': '已連線' }));
+                    }
+                };
+            } catch (error) {
+                console.log(`❌ 啟動 WebRTC 失敗: ${error.message}`);
+                throw error; // Propagate error to stop the call process
+            }
+            // present_time是本機第一次送出presence的時間,後面加入的peerConnection當offer
+            if (present_time > event.created_at) {
+                //console.log('present_time', present_time, ' event.created_at', event.created_at);
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                await _sendSignal(remoteId, { type: 'offer', sdp: offer.sdp });
+            }
+            _setupConnectionMonitoring(remoteId, peerConnection);
+        }
+
+        function _handleEvent(event) {
+            if (event.pubkey === publicKey) return;//Ignore own events
+            //remotePk = event.pubkey
+            try {
+                const data = JSON.parse(event.content)
+                if (data.type === 'presence') {
+                    _handlePeerPresence(event)
+
+                //確定收到tags: [['t', room],['p', peerid]] tags[1][1] is for self signal
+                } else if (data.type === 'signal' && event.tags[1][1] === selfId) {
+                    //console.log('type:', data.type, ` 收到tags:`, event.tags, ` pk:`, publicKey);
+                    _handleSignal(event, data.signal, data.peerid)
+                }
+            } catch (e) {
+                console.error('Error parsing event content', e)
+            }
+        }
+
+        function _handleSignal(event, signal, peerid) {
+            const connection = connections.get(peerid);
+            if (!connection) {console.log(`未找到連接: ${peerid}`); return;}
+
+            if (signal.type === 'offer') {
+                //console.log(`收到offer:`, signal);
+                _handleOffer(peerid, connection, signal);
+            } else if (signal.type === 'answer') {
+                //onsole.log(`收到answer:`, signal);
+                _handleAnswer(connection, peerid, signal);
+                //console.log(`收到ice:`, signal);
+            } else if (signal.type === 'ice') {
+                _handleIce(connection, peerid, signal);
+            }
+        }
+
+        async function _handleOffer(peerid, connection, { sdp }) {
+            
+            if (connection.remoteDescription) {
+                console.warn('Remote description already set')
+                return
+            }
+            try {
+                await connection.setRemoteDescription({ type: 'offer', sdp });
+                const answer = await connection.createAnswer();
+                await connection.setLocalDescription(answer);
+                await _sendSignal(peerid, { type: 'answer', sdp: answer.sdp });
+            } catch (error) {
+                console.error(`处理offer失败:`, error);
+            }
+        }
+
+
+        async function _handleAnswer(connection, peerid, { sdp }) {
+            const pc = connections.get(peerid);
+            if (!pc || pc.signalingState !== 'have-local-offer') return;
+            await pc.setRemoteDescription({
+                type: 'answer',
+                sdp
+            });
+            await _flushIceCandidates(pc, peerid);
+        }
+
+        // 在设置远程描述后刷新缓冲的候选
+        async function _flushIceCandidates(connection, peerid) {
+            if (!iceCandidateBuffers.has(peerid)) return;
+
+            const candidates = iceCandidateBuffers.get(peerid);
+            while (candidates.length > 0) {
+                const candidate = candidates.shift();
+                try {
+                    await connection.addIceCandidate(candidate);
+                } catch (error) {
+                    console.error(`添加缓冲ICE候选失败:`, error);
+                }
+            }
+            iceCandidateBuffers.delete(peerid);
+        }
+
+
+        async function _handleIce(connection, peerid, { candidate }) {
+            // 缓冲候选直到远程描述就绪
+            if (!connection.remoteDescription) {
+                if (!iceCandidateBuffers.has(peerid)) {
+                    iceCandidateBuffers.set(peerid, []);
+                }
+                iceCandidateBuffers.get(peerid).push(candidate);
+                return;
+            }
+
+            try {
+                await connection.addIceCandidate(candidate);
+            } catch (error) {
+                console.error(`添加ICE候选失败:`, error);
+            }
+        }
+
+        async function _sendSignal(peerid, signal) {
+            
+            try {
+                // 創建事件
+                const event = {
+                    kind: 25121,
+                    created_at: Math.floor(Date.now() / 1000),
+                    tags: [
+                        ['t', room],
+                        ['p', peerid] // 定向到特定peerid
+                    ],
+                    content: JSON.stringify({
+                        type: 'signal',
+                        peerid: selfId,
+                        signal
+                    }),
+                    pubkey: publicKey//Sender pubkey
+                };
+
+                // 簽名事件
+                const signedEvent = finalizeEvent(event, privateKey);
+                await Promise.any(pool.publish(relays, signedEvent));
+
+            } catch (e) {
+                console.error(`❌ 發送信令失敗: ${e}`)
+            }
+
+        }
+
+        function _setupConnectionMonitoring(peerid, pc) {
+            pc.onconnectionstatechange = () => {
+                //console.log(`${nip19.npubEncode(remotePk)} 連接狀態: ${pc.connectionState}`);
+
+                if (pc.connectionState === 'failed' ||
+                    pc.connectionState === 'disconnected') {
+                    _cleanupConnection(peerid);
+                }
+            };
+        }
+
+        function _cleanupConnection(peerid) {
+            const pc = connections.get(peerid);
+            if (!pc) return;
+
+            // 关闭数据通道和连接
+            if (pc.datachannel) pc.datachannel.close();
+            if (pc.remoteDataChannel) pc.remoteDataChannel.close();
+            pc.close();
+
+            // 清理资源
+            connections.delete(remotePk);
+            iceCandidateBuffers.delete(remotePk);
+
+            // 移除视频元素
+            const video = peerVideos[remotePk];
+            if (video && video.parentNode) {
+                video.parentNode.removeChild(video);
+                delete peerVideos[remotePk];
+            }
+        }
+
+        function getPeerConnectionState(connection) {
+            return {
+                signalingState: connection.signalingState,
+                iceGatheringState: connection.iceGatheringState,
+                iceConnectionState: connection.iceConnectionState,
+                connectionState: connection.connectionState
+            }
+        }
+
+        function disconnect() {
+            clearInterval(presenceInterval)
+            for (const relay of relayConnections) {
+                relay.close()
+            }
+            relayConnections = []
+        }
+
+        // 顯示接收到的消息
+        function displayMessage(event) {
+            const topicTag = event.tags.find(tag => tag[0] === 't');
+            const topic = topicTag ? topicTag[1] : '無主題';
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            messageDiv.innerHTML = `
+                <small>主題: ${topic}</small><br>
+                ${event.content}<br>
+                                
+                <small>來自: ${event.pubkey.substring(0, 10)}... | 
+                    ${event.created_at}</small>`
+                ;
+
+            receivedMessages.prepend(messageDiv);
+        }
+
+
+        // 全局變量記錄狀態
+        let isLocalMediaPaused = false;
+        let pausedTracks = [];
+
+        function toggleMedia() {
+            if (isLocalMediaPaused) {
+                resumeMedia();
+            } else {
+                pauseMedia();
+            }
+        }
+        // 暫停本地流
+        function pauseMedia() {
+            if (!localStream) return;
+
+            pausedTracks = localStream.getTracks().map(track => {
+                if (track.kind === 'video' || track.kind === 'audio') {
+                    track.enabled = false;  // 保持連接但禁用軌道
+                }
+                return track;
+            });
+            isLocalMediaPaused = true;
+            localVideo.srcObject = null; // 可選：隱藏本地預覽
+            console.log('已暫停本地視訊/音訊');
+        }
+
+        // 恢復本地流
+        function resumeMedia() {
+            if (!localStream || !isLocalMediaPaused) return;
+
+            pausedTracks.forEach(track => {
+                track.enabled = true;
+            });
+
+            isLocalMediaPaused = false;
+            localVideo.srcObject = localStream; // 恢復本地預覽
+            console.log('已恢復本地視訊/音訊');
+        }
+
+        // 停止
+        function stopSubscription() {
+            try {
+                // 1. 關閉所有與其他節點的連接
+                connections.forEach((pc, remotePk) => {
+                    // 關閉數據通道
+                    if (pc.datachannel) {
+                        pc.datachannel.close();
+                        console.log(`關閉與 ${nip19.npubEncode(remotePk)} 的數據通道`);
+                    }
+
+                    // 關閉 PeerConnection
+                    pc.close();
+                    console.log(`關閉與 ${nip19.npubEncode(remotePk)} 的 WebRTC 連接`);
+
+                    // 移除遠端視頻元素
+                    const videoElement = document.getElementById(remotePk);
+                    if (videoElement) {
+                        videoElement.remove();
+                        delete peerVideos[remotePk];
+                    }
+                });
+
+                // 2. 清空連接 Map
+                connections.clear();
+
+                // 3. 關閉本地媒體流
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                    localVideo.srcObject = null;
+                    console.log('已關閉本地攝影機/麥克風');
+                }
+
+                // 4. 發送退出通知給其他節點
+                //await _sendLeaveNotice();
+
+                // 5. 停止 Nostr subscription
+                if (subscription) {
+                    subscription.close(); // 或 subscription.unsub();
+                    subscription = null;
+                }
+
+                subscribeBtn.disabled = false;
+                unsubscribeBtn.disabled = true;
+                console.log('已停止訂閱');
+
+                console.log('已完全退出連線');
+                alert('已退出連線');
+
+            } catch (error) {
+                console.error('退出連線時發生錯誤:', error);
+            }
+        }
+
+        broadcastBtn.addEventListener('click', () => {
+            if (connections.size === 0) {
+                alert('沒有可用的連接');
+                return;
+            }
+            const data = JSON.stringify({peerid:selfId, type:'pos', data:{posx:100.0,posy:200.0}}); // 這是一個廣播消息 ;
+            broadcast(data);
+        });
+
+        function broadcast(data) {
+            connections.forEach((pc, pubkey) => {
+                if (pc.datachannel?.readyState === 'open') {
+                    //console.log(pc.datachannel?.readyState, '發送數據到', nip19.npubEncode(pubkey).substring(0, 8));
+                    pc.datachannel.send(data);
+                }
+            });
+        }
+
+        function _handleMessage(data) {
+            try {
+                // 嘗試解析 JSON 數據
+                const parseData = JSON.parse(data);
+                //console.log(`收到解析後的消息:`, parseData.peerid);
+
+                if (parseData !== null && typeof parseData === 'object') {
+
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = 'message';
+                    messageDiv.innerHTML = `
+                        <small>收到${parseData.peerid.substring(0, 10)}的消息:${parseData.type}</small>`;
+                    receivedMessages.prepend(messageDiv);
+                    toGodot(data);  // Godot 回調
+                }
+            } catch (error) {
+                console.error('解析消息失敗:', error);
+                return;
+            }
+        };
+
+        // 啟動APP
+        init();
+
+    var toGodot = null;
+
+    window.JSGD = {
+        gdGetPeer : function (data) {
+            return (selfId !== null && selfId !== undefined) ? selfId : "未設定";
+        },
+        gdcb: function (gdCbFunc) {
+            if (typeof gdCbFunc === "function") {
+                toGodot = gdCbFunc;
+                // 立即測試回調
+                gdCbFunc("JavaScript callback function已設置");
+            } else {
+                console.log("Godot callback function must be a function");
+            }
+        }
+    };
+
+    </script>
+<!--  Godot Godot Bridge -->
+<script src="index.js"></script>
+<script>
+	const GODOT_THREADS_ENABLED = false;
+    var engine = new Engine({"args":[],"canvasResizePolicy":2,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":12243440,"index.wasm":25590391},"focusCanvas":true,"gdnativeLibs":[]});
+	engine.startGame({
+    /* optional override configuration, eg. */
+	 //args:[],
+     //unloadAfterInit: false,
+	 focusCanvas:true,
+	 gdextensionLibs:[],
+	 ensureCrossOriginIsolationHeaders:true,
+     canvasResizePolicy: 0,
+	});
+
+	
+
+ </script>
+
+
+</body>
+
+</html>
