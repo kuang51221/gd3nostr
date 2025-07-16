@@ -585,37 +585,35 @@
             receivedMessages.prepend(messageDiv);
         }
 
-
         
-            
-            function toggleVideo() {
-                if (localStream) {
-                    const videoTrack = localStream.getVideoTracks()[0];
-                    if (videoTrack) {
-                        videoTrack.enabled = !videoTrack.enabled;
-                        toggleVideoBtn.textContent = videoTrack.enabled ? '暫停視訊' : '恢復視訊';
-                        console.log(`視訊已 ${videoTrack.enabled ? '恢復' : '暫停'}`);
-                    } else {
-                        console.warn('本地流中沒有視訊軌道');
-                    }
+        function toggleVideo() {
+            if (localStream) {
+                const videoTrack = localStream.getVideoTracks()[0];
+                if (videoTrack) {
+                    videoTrack.enabled = !videoTrack.enabled;
+                    toggleVideoBtn.textContent = videoTrack.enabled ? '暫停視訊' : '恢復視訊';
+                    console.log(`視訊已 ${videoTrack.enabled ? '恢復' : '暫停'}`);
                 } else {
-                    console.warn('本地流尚未初始化');
+                    console.warn('本地流中沒有視訊軌道');
                 }
+            } else {
+                console.warn('本地流尚未初始化');
             }
-            function toggleAudio() {
-                if (localStream) {
-                    const audioTrack = localStream.getAudioTracks()[0];
-                    if (audioTrack) {
-                        audioTrack.enabled = !audioTrack.enabled;
-                        toggleAudioBtn.textContent = audioTrack.enabled ? '暫停音訊' : '恢復音訊';
-                        console.log(`音訊已 ${audioTrack.enabled ? '恢復' : '暫停'}`);
-                    } else {
-                        console.warn('本地流中沒有音訊軌道');
-                    }
+        }
+        function toggleAudio() {
+            if (localStream) {
+                const audioTrack = localStream.getAudioTracks()[0];
+                if (audioTrack) {
+                    audioTrack.enabled = !audioTrack.enabled;
+                    toggleAudioBtn.textContent = audioTrack.enabled ? '暫停音訊' : '恢復音訊';
+                    console.log(`音訊已 ${audioTrack.enabled ? '恢復' : '暫停'}`);
                 } else {
-                    console.warn('本地流尚未初始化');
+                    console.warn('本地流中沒有音訊軌道');
                 }
+            } else {
+                console.warn('本地流尚未初始化');
             }
+        }
             
         // 停止
         function stopSubscription() {
@@ -738,7 +736,7 @@
 <script src="index.js"></script>
 <script>
 	const GODOT_THREADS_ENABLED = false;
-    var engine = new Engine({"args":[],"canvasResizePolicy":2,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":12243520,"index.wasm":25590391},"focusCanvas":true,"gdnativeLibs":[]});
+    var engine = new Engine({"args":[],"canvasResizePolicy":2,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":12243568,"index.wasm":25590391},"focusCanvas":true,"gdnativeLibs":[]});
 	engine.startGame({
     /* optional override configuration, eg. */
 	 //args:[],
