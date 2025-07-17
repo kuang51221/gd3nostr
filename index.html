@@ -168,7 +168,6 @@
         const broadcastBtn = document.getElementById('broadcast');
         const localVideo = document.getElementById('localVideo');
         const remoteVideos = document.getElementById('remoteVideos');
-        //const toggleMediaBtn = document.getElementById('toggleMedia');
         const toggleVideoBtn = document.getElementById('toggleVideo');
         const toggleAudioBtn = document.getElementById('toggleAudio');
 
@@ -183,7 +182,6 @@
             my_id.textContent = `Room:${room} | ID:${selfId} `;
             subscribeBtn.addEventListener('click', startSubscription);
             unsubscribeBtn.addEventListener('click', stopSubscription);
-            //toggleMediaBtn.addEventListener('click', toggleMedia);
             toggleVideoBtn.addEventListener('click', toggleVideo);
             toggleAudioBtn.addEventListener('click', toggleAudio);
         }
@@ -214,7 +212,7 @@
                 const npub = nip19.npubEncode(publicKey);
                 //publicKeyInput.value = npub;
                 // 更新房間名稱
-                room += subscribeTopicInput.value.trim();
+                room = subscribeTopicInput.value.trim();
                 my_id.textContent = `Room:${room} | ID:${selfId} `;
             } catch (error) {
                 console.error('解析密鑰錯誤:', error);
@@ -343,7 +341,7 @@
 
                 dataChannel.onclose = () => {
                     console.log(remoteId, `通道已關閉`);
-                    toGodot(`通道已關閉: ${remoteId}`);
+                   
                 };
 
                 peerConnection.onicecandidate = event => {
@@ -372,12 +370,13 @@
                 peerConnection.onconnectionstatechange = () => {
                     console.log(`🌐 連線狀態: ${peerConnection.connectionState}`);
                     if (peerConnection.connectionState === 'connected') {
-                        console.log('🎉 通話已連線！');
-                        broadcast(JSON.stringify({ 'message': '已連線' }));
+                        console.log('🎉 已連線！');
+                        broadcast(JSON.stringify({peerid:selfId, type:'pos', data:{posx:0.0,posy:0.0}}));
                     }
                     else if (peerConnection.connectionState === 'disconnected' ||
                         peerConnection.connectionState === 'failed') {
-                        console.log('❌ 通話已斷開或失敗');
+                        console.log('❌ 已斷開或失敗');
+                         toGodot(`通道已關閉: ${remoteId}\n`);
                         _cleanupConnection(remoteId);
                     }
                 };
@@ -585,7 +584,7 @@
             receivedMessages.prepend(messageDiv);
         }
 
-        
+
         function toggleVideo() {
             if (localStream) {
                 const videoTrack = localStream.getVideoTracks()[0];
@@ -715,15 +714,33 @@
     //Godot Bridge
     var toGodot = null;
 
+    window.myArray = function () {
+        if (!connections || connections.size === 0) {
+            console.log("No connections available");
+            return [];
+        }
+        toGodot(Array.from(connections.keys()));
+        return Array.from(connections.keys())[0];//ok
+    };
+
     window.JSGD = {
         gdGetPeer : function (data) {
             return (selfId !== null && selfId !== undefined) ? selfId : "未設定";
+        },
+        gdGetConnections: function (data) {
+            if (!connections || connections.size === 0) {
+                console.log("No connections available");
+                return [];
+            }
+            console.log("Current connections:", Array.from(connections.keys()));
+            return Array.from(connections.keys())[0];
         },
         gdcb: function (gdCbFunc) {
             if (typeof gdCbFunc === "function") {
                 toGodot = gdCbFunc;
                 // 立即測試回調
                 gdCbFunc("JavaScript callback function已設置");
+                
             } else {
                 console.log("Godot callback function must be a function");
             }
@@ -736,7 +753,7 @@
 <script src="index.js"></script>
 <script>
 	const GODOT_THREADS_ENABLED = false;
-    var engine = new Engine({"args":[],"canvasResizePolicy":2,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":12243584,"index.wasm":25590391},"focusCanvas":true,"gdnativeLibs":[]});
+    var engine = new Engine({"args":[],"canvasResizePolicy":2,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":12244480,"index.wasm":25590391},"focusCanvas":true,"gdnativeLibs":[]});
 	engine.startGame({
     /* optional override configuration, eg. */
 	 //args:[],
