@@ -714,26 +714,17 @@
     //Godot Bridge
     var toGodot = null;
 
-    window.myArray = function () {
-        if (!connections || connections.size === 0) {
-            console.log("No connections available");
-            return [];
-        }
-        toGodot(Array.from(connections.keys()));
-        return Array.from(connections.keys())[0];//ok
-    };
-
     window.JSGD = {
-        gdGetPeer : function (data) {
+        gdSelfId : function (data) {
             return (selfId !== null && selfId !== undefined) ? selfId : "未設定";
         },
         gdGetConnections: function (data) {
             if (!connections || connections.size === 0) {
                 console.log("No connections available");
-                return [];
+                return ["No connections available"];
             }
             console.log("Current connections:", Array.from(connections.keys()));
-            return Array.from(connections.keys())[0];
+            return Array.from(connections.keys());
         },
         gdcb: function (gdCbFunc) {
             if (typeof gdCbFunc === "function") {
@@ -753,7 +744,7 @@
 <script src="index.js"></script>
 <script>
 	const GODOT_THREADS_ENABLED = false;
-    var engine = new Engine({"args":[],"canvasResizePolicy":2,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":12244480,"index.wasm":25590391},"focusCanvas":true,"gdnativeLibs":[]});
+    var engine = new Engine({"args":[],"canvasResizePolicy":2,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":12244592,"index.wasm":25590391},"focusCanvas":true,"gdnativeLibs":[]});
 	engine.startGame({
     /* optional override configuration, eg. */
 	 //args:[],
