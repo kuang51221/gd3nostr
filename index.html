@@ -245,6 +245,11 @@
                 // 簽名事件
                 const signedEvent = finalizeEvent(event, privateKey);
                 await Promise.any(pool.publish(relays, signedEvent));
+                toGodot(JSON.stringify({
+                    peerid: selfId,
+                    type: "selfId",
+                    data: {}
+                }));
 
             } catch (e) {
                 console.error(`❌ 發送信令失敗: ${e}`)
@@ -266,7 +271,7 @@
                 {
                     kinds: [25121],
                     '#t': [room], // 過濾特定主題
-                    since: Math.floor(Date.now() / 1000) - 10000,//
+                    since: Math.floor(Date.now() / 1000) - 30000,// 30秒內的消息
                 },
                 {
                     async onevent(event) {
@@ -377,7 +382,6 @@
                     else if (peerConnection.connectionState === 'disconnected' ||
                         peerConnection.connectionState === 'failed') {
                         console.log('❌ 已斷開或失敗');
-                         toGodot(`通道已關閉: ${remoteId}\n`);
                         _cleanupConnection(remoteId);
                     }
                 };
@@ -531,6 +535,7 @@
         }
 
         function _cleanupConnection(peerid) {
+            
             const pc = connections.get(peerid);
             if (!pc) return;
 
@@ -549,6 +554,12 @@
                 video.parentNode.removeChild(video);
                 delete peerVideos[peerid];
             }
+            toGodot(JSON.stringify({
+                    peerid: peerid,
+                    type: "delPlayer",
+                    data: {}
+                })
+            );
         }
 
         function getPeerConnectionState(connection) {
@@ -733,12 +744,12 @@
         gdcb: function (gdCbFunc) {
             if (typeof gdCbFunc === "function") {
                 toGodot = gdCbFunc;
-                // 立即測試回調
-                gdCbFunc(JSON.stringify({
+                // 立即測試回調,改在_sendPresence中發送
+                /* gdCbFunc(JSON.stringify({
                     peerid: selfId,
                     type: "selfId",
                     data: {}
-                }));
+                })); */
                 
             } else {
                 console.log("Godot callback function must be a function");
@@ -751,7 +762,7 @@
 <script src="index.js"></script>
 <script>
 	const GODOT_THREADS_ENABLED = false;
-    var engine = new Engine({"args":[],"canvasResizePolicy":2,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":12273280,"index.wasm":25590391},"focusCanvas":true,"gdnativeLibs":[]});
+    var engine = new Engine({"args":[],"canvasResizePolicy":2,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":12275120,"index.wasm":25590391},"focusCanvas":true,"gdnativeLibs":[]});
 	engine.startGame({
     /* optional override configuration, eg. */
 	 //args:[],
