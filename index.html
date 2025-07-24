@@ -377,7 +377,6 @@
                     console.log(`🌐 連線狀態: ${peerConnection.connectionState}`);
                     if (peerConnection.connectionState === 'connected') {
                         console.log('🎉 已連線！');
-                        broadcast(JSON.stringify({peerid:selfId, type:'pos', data:{posx:10.10,posy:10.10}}));
                     }
                     else if (peerConnection.connectionState === 'disconnected' ||
                         peerConnection.connectionState === 'failed') {
@@ -762,7 +761,7 @@
 <script src="index.js"></script>
 <script>
 	const GODOT_THREADS_ENABLED = false;
-    var engine = new Engine({"args":[],"canvasResizePolicy":2,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":12275120,"index.wasm":25590391},"focusCanvas":true,"gdnativeLibs":[]});
+    var engine = new Engine({"args":[],"canvasResizePolicy":2,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":12290688,"index.wasm":25590391},"focusCanvas":true,"gdnativeLibs":[]});
 	engine.startGame({
     /* optional override configuration, eg. */
 	 //args:[],
