@@ -124,8 +124,6 @@
                 <input type="text" id="subscribeTopic" placeholder="輸入Room">
                 <button id="subscribe">開始</button>
             </div>
-            <button id="broadcast">廣播</button>
-            <!-- <button id="toggleMedia">暫停/恢復視訊/音訊</button> -->
             <button id="toggleVideo">暫停/恢復視訊</button>
             <button id="toggleAudio">暫停/恢復音訊</button>
             <button id="unsubscribe" >退出</button>
@@ -165,7 +163,6 @@
         const subscribeBtn = document.getElementById('subscribe');
         const unsubscribeBtn = document.getElementById('unsubscribe');
         const receivedMessages = document.getElementById('receivedMessages');
-        const broadcastBtn = document.getElementById('broadcast');
         const localVideo = document.getElementById('localVideo');
         const remoteVideos = document.getElementById('remoteVideos');
         const toggleVideoBtn = document.getElementById('toggleVideo');
@@ -684,14 +681,6 @@
             }
         }
 
-        broadcastBtn.addEventListener('click', () => {
-            if (connections.size === 0) {
-                alert('沒有可用的連接');
-                return;
-            }
-            const data = JSON.stringify({peerid:selfId, type:'pos', data:{posx:100.0,posy:200.0}}); // 這是一個廣播消息 ;
-            broadcast(data);
-        });
 
         function broadcast(data) {
             connections.forEach((pc, pubkey) => {
@@ -766,7 +755,7 @@
 <script src="index.js"></script>
 <script>
 	const GODOT_THREADS_ENABLED = false;
-    var engine = new Engine({"args":[],"canvasResizePolicy":2,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":13558720,"index.wasm":25590391},"focusCanvas":true,"gdnativeLibs":[]});
+    var engine = new Engine({"args":[],"canvasResizePolicy":2,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":13566656,"index.wasm":25590391},"focusCanvas":true,"gdnativeLibs":[]});
 	engine.startGame({
     /* optional override configuration, eg. */
 	 //args:[],
