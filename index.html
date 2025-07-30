@@ -75,7 +75,6 @@
 
         /* Responsive layout - makes the two columns/boxes stack on top of each other instead of next to each other, on small screens */
         @media (max-width: 600px) {
-
             nav,
             article {
                 width: 100%;
@@ -96,6 +95,10 @@
             border-radius: 1px;
             padding: 3px;
             background: rgba(255, 255, 255, 0);
+        }
+        #selectedColor {
+        display: inline-block;
+        vertical-align: middle;
         }
     </style>
 </head>
@@ -124,9 +127,14 @@
                 <input type="text" id="subscribeTopic" placeholder="輸入Room">
                 <button id="subscribe">開始</button>
             </div>
+            
+            <button id="selectColor">選擇顏色</button>
+            <div id="selectedColor" style="width: 30px; height: 30px; border: 1px solid #000; margin-left: 8px;"></div>
+            
             <button id="toggleVideo">暫停/恢復視訊</button>
             <button id="toggleAudio">暫停/恢復音訊</button>
             <button id="unsubscribe" >退出</button>
+            
             <div id="My_Id"></div>
             <h4>收到的消息:</h4>
             <div id="receivedMessages"></div>
@@ -159,6 +167,7 @@
 
         // DOM元素
         const my_id = document.getElementById('My_Id');
+        const selectColorBtn = document.getElementById('selectColor');
         const subscribeTopicInput = document.getElementById('subscribeTopic');
         const subscribeBtn = document.getElementById('subscribe');
         const unsubscribeBtn = document.getElementById('unsubscribe');
@@ -181,6 +190,9 @@
             unsubscribeBtn.addEventListener('click', stopSubscription);
             toggleVideoBtn.addEventListener('click', toggleVideo);
             toggleAudioBtn.addEventListener('click', toggleAudio);
+            selectColorBtn.addEventListener('click', colorSelection);
+            // 初始化顏色選擇
+            colorSelection()
         }
 
         // 生成密鑰對
@@ -216,6 +228,12 @@
             }
         }
 
+        // 選擇顏色
+        function colorSelection(){
+            const colors = ['red', 'green', 'blue', 'yellow', 'pink'];
+            const randomColor = colors[Math.floor(Math.random() * colors.length)];
+            selectedColor.style.backgroundColor = randomColor;
+        }
 
         // 發送presence在線消息
         async function _sendPresence() {
@@ -223,11 +241,16 @@
                 alert('請先生成或輸入私鑰');
                 return;
             }
+            if (subscribeTopicInput.value == 'lucky_') {
+                alert('請輸入Room');
+                return;
+            }
             try {
                 const msg = JSON.stringify({ 
                     type: `presence`, 
                     pubkey: publicKey, 
-                    content: `Join: ${room}` ,
+                    //content: `Join: ${room}`,
+                    color: selectedColor.style.backgroundColor,
                     peerid: selfId,
                 });
                 // 創建事件
@@ -245,7 +268,7 @@
                 toGodot(JSON.stringify({
                     peerid: selfId,
                     type: "selfId",
-                    data: {}
+                    data: { color: selectedColor.style.backgroundColor},
                 }));
 
             } catch (e) {
@@ -300,14 +323,14 @@
             //const remotePk = event.pubkey;
             const content = JSON.parse(event.content);
             const remoteId = content.peerid;
-            //console.log(`收到${remoteId}的在線消息:`);
+            //console.log(`收到${remoteId}的在線消息:${content.color}`);
             if (!connections.has(remoteId)) {
                 // 初始化新的 WebRTC 連接
-                _initConnection(event, remoteId)
+                _initConnection(event, remoteId, content)
             }
         }
 
-        async function _initConnection(event, remoteId) {
+        async function _initConnection(event, remoteId, content) {
             //console.log(`_initConnection收到${remoteId}:`);
             if (connections.has(remoteId)) {
                 console.warn(`已存在與 ${remoteId} 的連接`);
@@ -372,7 +395,7 @@
                         remoteVideos.appendChild(video);
                     }
                     //console.log('✅ 遠端視訊流已接收');
-                toGodot(JSON.stringify({peerid:remoteId, type:'join', data:{posx:0.0,posy:0.0}}))
+                toGodot(JSON.stringify({peerid:remoteId, type:'join', data:{color:content.color}}));
                 };
                 
                 peerConnection.onconnectionstatechange = () => {
@@ -755,7 +778,7 @@
 <script src="index.js"></script>
 <script>
 	const GODOT_THREADS_ENABLED = false;
-    var engine = new Engine({"args":[],"canvasResizePolicy":2,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":13566656,"index.wasm":25590391},"focusCanvas":true,"gdnativeLibs":[]});
+    var engine = new Engine({"args":[],"canvasResizePolicy":2,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":13583360,"index.wasm":25590391},"focusCanvas":true,"gdnativeLibs":[]});
 	engine.startGame({
     /* optional override configuration, eg. */
 	 //args:[],
